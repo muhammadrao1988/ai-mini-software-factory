@@ -1,0 +1,18 @@
+WHAT THE AGENT WAS TOLD
+Your task:
+
+Add the method `list_parcels(shop: str, status: str | None = None) -> list` to `ParcelTracker` in app/tracking.py. Everything from the earlier tasks must keep working.
+
+It returns a new list of dicts, one for each parcel of that shop. Each dict has the same form as the result of get_parcel (keys "tracking_number", "shop", "recipient", "status"). The list is sorted by tracking number, smallest first. Surrounding whitespace is removed from the shop argument before matching. After that the match is exact and case-sensitive. A shop with no parcels gives [].
+
+If `status` is given (not None), only parcels whose current status (the same value as get_parcel's "status") equals it are returned. `status` must be "registered" or one of ALLOWED_STATUSES, otherwise raise ValueError. The dicts in the list are copies: changing them must not change the tracker.
+
+
+WHAT THE AGENT DID
+- runs: git ls-files && cat app/tracking.py && ls tests && head -30 tests/*.py
+- changes app/tracking.py
+- writes tests/test_list_parcels.py
+- runs: python3 --version && python3 -m pytest -q 2>&1 | tail -5
+
+WHAT THE AGENT SAID AT THE END
+I added `ParcelTracker.list_parcels(shop, status=None)` to `app/tracking.py`. It strips whitespace from `shop`, then matches exactly with case. It returns a new list of fresh `get_parcel` dicts, sorted by tracking number, so the current status is the latest update by time and changing the result does not change the tracker. A shop with no parcels gives `[]`. If `status` is given, only parcels with that current status are returned. A `status` that is not `"registered"` or in `ALLOWED_STATUSES` raises `ValueError`, even for a shop with no parcels. Where the task didn't say, I decided that a `shop` that isn't a string returns `[]`, and that a `status` that isn't a string (like `1` or a list) raises `ValueError`. The new tests in `tests/test_list_parcels.py` cover these cases, and the full suite passes (76 tests).

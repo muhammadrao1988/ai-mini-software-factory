@@ -1,0 +1,19 @@
+WHAT THE AGENT WAS TOLD
+Your task:
+
+Create the package `app` (folder app/ with an empty __init__.py) and the module app/tracking.py. In app/tracking.py write a class `ParcelTracker` that keeps all data in memory. It takes no arguments when you create it. Each ParcelTracker object has its own separate data and its own number counter.
+
+Method `register_parcel(shop: str, recipient: str) -> str`: registers a new parcel and returns its tracking number. A tracking number is the letters "PT" followed by exactly 8 digits. Numbers are given out in order, starting at 1, padded with zeros: the first parcel of a tracker gets "PT00000001", the second gets "PT00000002", and so on. Surrounding whitespace is removed from shop and recipient before they are stored. If shop or recipient is empty or only whitespace, raise ValueError and do not register anything (no number is used up).
+
+Method `get_parcel(tracking_number: str) -> dict`: returns a new dict with exactly these keys: "tracking_number" (str), "shop" (str), "recipient" (str), "status" (str). A newly registered parcel has status "registered". If the tracking number is unknown, raise KeyError. The returned dict is a copy: changing it must not change the data stored in the tracker.
+
+
+WHAT THE AGENT DID
+- runs: ls -la; ls tests 2>/dev/null
+- runs: cat README.md; ls -la app; cat tests/test_start.py
+- writes app/tracking.py
+- writes tests/test_tracking.py
+- runs: python3 -m pytest -q
+
+WHAT THE AGENT SAID AT THE END
+I added `app/tracking.py` with the `ParcelTracker` class; `app/__init__.py` was already there and empty. Each tracker keeps its own parcels and its own counter in memory. `register_parcel` strips the spaces around the shop and recipient names. If either one is empty, it raises `ValueError` before the counter goes up, so no number is used. Otherwise it gives out the next number (`PT00000001`, `PT00000002`, …) and stores the parcel with status `"registered"`. `get_parcel` returns a copy of the stored dict, so changing it doesn't change the tracker, and an unknown tracking number raises `KeyError`. I also added `tests/test_tracking.py`, which covers numbering, separate trackers, space removal, empty input not using up a number, unknown numbers and the copy behaviour. All 10 tests pass with `python3 -m pytest -q`.

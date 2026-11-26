@@ -1,0 +1,24 @@
+WHAT THE AGENT WAS TOLD
+Your task:
+
+Add the module app/lookup.py with the function `track(tracker, tracking_number: str) -> dict`. `tracker` is a ParcelTracker from app/tracking.py. This is the view a customer sees. Do not change how ParcelTracker behaves.
+
+Before the lookup, the tracking number is cleaned: surrounding whitespace is removed and letters are made upper case. So " pt00000001 " finds "PT00000001". If the cleaned number is unknown, raise KeyError.
+
+The returned dict has exactly these keys:
+- "tracking_number": the cleaned tracking number (str).
+- "current_status": the same value as tracker.get_parcel(number)["status"].
+- "current_place": the place of the last entry in the history, or None if there are no updates.
+- "last_update": the time (datetime) of the last entry in the history, or None if there are no updates.
+- "history": the full history as returned by tracker.get_history(number): a list of dicts with keys "status", "place", "time", oldest first.
+The result must not show the shop or the recipient.
+
+
+WHAT THE AGENT DID
+- runs: git ls-files && cat app/tracking.py && ls tests && head -40 tests/*.py
+- writes app/lookup.py
+- writes tests/test_lookup.py
+- runs: python3 -m pytest -q
+
+WHAT THE AGENT SAID AT THE END
+I added `app/lookup.py` with `track(tracker, tracking_number)`. It strips surrounding whitespace from the tracking number and makes it upper case, then gets the status from `tracker.get_parcel` and the history from `tracker.get_history`. It returns only the five keys you listed: the place and time come from the last history entry and are `None` when there are no updates, and the shop and recipient are never included. An unknown number raises `KeyError`. One small addition you didn't ask for: if the tracking number isn't a string at all (for example `None`), it also raises `KeyError` instead of crashing. `ParcelTracker` is unchanged. I added `tests/test_lookup.py`, which covers a parcel with no updates, the latest update chosen by time, the number cleaning, hiding the shop and recipient, and unknown numbers; all 30 tests pass.

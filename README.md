@@ -1,7 +1,7 @@
 # AI mini software factory
 
-A small software factory you can run on a laptop. A task goes in, an AI agent builds it alone, and hidden tests
-judge the result.
+A small software factory you can run on a laptop. You give it an idea. A planner agent breaks it into small
+tasks, builder agents build them alone, and hidden tests judge every step.
 
 ![A task goes to an AI agent, hidden tests judge the work, a report comes out](docs/how-it-works.png)
 
@@ -28,14 +28,61 @@ It is a factory in one file, small enough to read in ten minutes.
    test itself. The agent gets 3 tries at most.
 5. **A report comes out:** passed or failed, tries, time and cost.
 
-## What you can use it for
+## Start your own product
+
+You do not need the demo. Give the factory your own idea, in one sentence.
+
+**1. Tell it your idea**
+
+```bash
+uv run factory.py start "an online parcel tracking system" --name parcel-tracking
+```
+
+A planner agent breaks the idea into 5 small tasks. This is what it made for the tracking system:
+
+```
+01-core-parcel-registry:   register a parcel and get a tracking number
+02-add-status-updates:     add status updates with a place and a time
+03-customer-lookup:        look up a number: current status and full history
+04-lock-delivered-parcels: no more updates after a parcel is delivered
+05-shop-parcel-list:       a shop lists its parcels, with a filter on status
+```
+
+**2. Read the checklist, and change what you do not want**
+
+For every task the planner writes the hidden tests, and a `checklist.md` that says in plain words what they check.
+No code reading needed:
+
+```
+- After an update the parcel status must be the new status.
+- History must be sorted oldest first.
+- An unknown tracking number must raise KeyError.
+- A bad status or empty place must be refused, and nothing must be stored.
+```
+
+"Hidden" means hidden from the agent that builds, not from you. This is the step where you decide what "right"
+means. The planner is an AI, so read its list.
+
+**3. Build it**
+
+```bash
+uv run factory.py build products/parcel-tracking
+```
+
+The agents build task by task. Each one starts from the work of the one before. After every task, the hidden
+tests of all tasks so far run again, so a new task cannot quietly break an old one.
+
+For the tracking system: 5 of 5 tasks passed, in 119 seconds, for $0.84 at API prices. The result is in
+[`products/parcel-tracking`](products/parcel-tracking/): the plan, the checklists and the finished code.
+
+## What else you can use it for
 
 | You want to | Do this |
 |---|---|
 | **Understand how a software factory works** | Read `factory.py`. It is one file. Then run one task and watch the agent work. |
-| **See how good your tickets are** | Write a ticket and the hidden tests for it. If the agent fails on the first try, the ticket left something out. |
-| **Compare AI models** | Run the same ten tasks with two models and compare passes, time and cost. |
-| **Try it on your own code** | Point it at your own Python project with `--project`, and give it your own task. |
+| **See how good your tickets are** | If an agent fails on the first try, the ticket left something out. See "What I found" below. |
+| **Compare AI models** | Run the same ten demo tasks with two models and compare passes, time and cost. |
+| **Work on code you already have** | Point it at your own Python project with `--project`. |
 
 ## What you get
 
@@ -78,7 +125,8 @@ For every try, four files are saved in `out/logs/<task>/`:
 
 ## What I found
 
-I ran the same 10 small tasks twice. The only difference was how the task was written.
+The project comes with a demo: 10 small tasks on a tiny shop cart. I ran them twice. The only difference was how
+the task was written.
 
 | How the task was written | Passed on the first try | Passed after retries | Time | Cost (API price) |
 |---|---|---|---|---|
@@ -119,44 +167,34 @@ git clone https://github.com/muhammadrao1988/ai-mini-software-factory.git
 cd ai-mini-software-factory
 ```
 
-### Step 3: Check the judge (no AI, a few seconds)
+### Step 3: Start your own product
 
 ```bash
-uv run check_tasks.py
+uv run factory.py start "your idea in one sentence" --name my-product
+uv run factory.py build products/my-product
 ```
 
-For every task this proves two things: the untouched project fails the hidden tests, and a correct answer written
-by hand passes them.
+Between the two commands, read `task.md` and `checklist.md` in each folder of `products/my-product/tasks/`.
 
-### Step 4: Run one task
+### Or: run the demo
 
 ```bash
+uv run check_tasks.py                # proves the hidden tests of the demo are fair (no AI, a few seconds)
 uv run factory.py tasks/01-discount-code
+uv run factory.py tasks              # all ten, each as a full spec
+uv run factory.py tasks --tickets    # all ten, each as a one-line ticket
 ```
 
-### Step 5: Run all ten
+### Or: work on code you already have
 
-```bash
-uv run factory.py tasks              # each task as a full spec
-uv run factory.py tasks --tickets    # each task as a one-line ticket
-```
-
-### Step 6: Use it on your own project
-
-Your project must be a Python project with a `tests/` folder.
-
-1. Make a folder for your task, for example `my-tasks/add-login/`.
-2. Put the task in `task.md`, in plain words.
-3. Put your hidden tests in `hidden/test_hidden.py`. Start each test with one sentence that says what must be true.
-   That sentence is the note the agent gets when the test fails.
-4. Run it:
+Your project must be a Python project with a `tests/` folder. Make a task folder with a `task.md` and your
+hidden tests in `hidden/test_hidden.py`, then:
 
 ```bash
 uv run factory.py my-tasks/add-login --project path/to/your/project
 ```
 
-The agent works on a copy. Your project is never changed. If you like the result, the change is in
-`out/logs/add-login/try-1-change.diff`.
+The agent works on a copy. Your project is never changed. The change is saved in `out/logs/`.
 
 ### No Claude subscription? Use an API key
 
@@ -180,8 +218,8 @@ itself before any agent runs. A factory is only as good as its judge.
 
 ## Good to know
 
-It is teaching-size: ten small tasks on one tiny project, run with one model. It stops at the report and never
-merges or publishes anything by itself.
+It is teaching-size. It builds the logic of a product in plain Python: no screens, no web server, no database
+server. It never publishes anything by itself.
 
 <details>
 <summary>More details: the files, writing your own task, settings</summary>
@@ -192,7 +230,8 @@ merges or publishes anything by itself.
 |---|---|
 | `factory.py` | The factory: workspace, agent, judge, retry, report |
 | `check_tasks.py` | Tests the judge itself, without AI |
-| `demo/` | The small shop project every agent starts from |
+| `products/` | Your products. `parcel-tracking` is the worked example |
+| `demo/` | The small shop project for the demo tasks |
 | `tasks/<name>/task.md` | The task as a full spec |
 | `tasks/<name>/ticket.md` | The same task as one line |
 | `tasks/<name>/hidden/` | The hidden tests. The first line of text in each test is the note the agent gets on a fail |
@@ -216,14 +255,18 @@ project, so the tasks, the hidden tests and the reference answers are not in it.
 
 - The agent is kept in its folder by Claude Code's permission rules.
 - The hidden tests show what I think is right for each task.
-- Tested on a Mac, with the demo shop. The `--api-key` option is not yet run with a paid key.
+- Tested on a Mac. `start` and `build` were run on one idea so far, the parcel tracking system. The `--api-key`
+  option is not yet run with a paid key.
+- A product is built and tested with the Python that runs the factory (3.14 for me). Its README says which.
 
 **Settings**
 
 | Setting | Default | What it does |
 |---|---|---|
+| `--name` | `my-product` | `start`: the name of your product folder |
+| `--tasks` | `5` | `start`: how many tasks the planner makes |
 | `--tickets` | off | Give the agent `ticket.md` instead of `task.md` |
-| `--project` | the demo shop | The Python project the agents work on |
+| `--project` | the demo shop | Demo-style tasks only: the Python project the agents work on |
 | `--api-key` | off | Pay with `ANTHROPIC_API_KEY` instead of the Claude sign-in |
 | `FACTORY_MODEL` | `sonnet` | The AI model the agent uses |
 

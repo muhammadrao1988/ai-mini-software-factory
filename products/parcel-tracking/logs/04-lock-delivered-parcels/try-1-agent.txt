@@ -1,0 +1,20 @@
+WHAT THE AGENT WAS TOLD
+Your task:
+
+Change `ParcelTracker.add_status` in app/tracking.py. Once a parcel has an update with status "delivered" in its history, every later call to add_status for that parcel must raise ValueError. This applies to every status, including another "delivered", and to every time, also a time earlier than the delivery. Nothing is stored when this happens. The checks from the earlier task still run first in the same order (unknown number -> KeyError, bad status -> ValueError, empty place -> ValueError, time not a datetime -> TypeError). After those checks, check for delivery and raise ValueError.
+
+Also add the method `is_delivered(tracking_number: str) -> bool`. It returns True if the parcel has a "delivered" update in its history, and False if not. An unknown tracking number raises KeyError.
+
+Everything else stays the same. Other parcels are not affected.
+
+
+WHAT THE AGENT DID
+- runs: git ls-files && cat app/tracking.py && ls tests && cat tests/*.py | head -80
+- changes app/tracking.py
+- changes app/tracking.py
+- runs: cat > tests/test_delivered_lock.py <<'EOF'
+- writes tests/test_delivered_lock.py
+- runs: python3 -m pytest -q 2>&1 | tail -15
+
+WHAT THE AGENT SAID AT THE END
+I changed `ParcelTracker.add_status` in `app/tracking.py` so that once a parcel has a "delivered" update, any later call raises `ValueError` and stores nothing. That includes another "delivered" and times earlier than the delivery. The existing checks still run first, in the same order, and the delivery check comes after them. I also added `is_delivered(tracking_number)`, which returns True or False and raises `KeyError` for an unknown number. Both use a small helper, `_has_delivered`, that looks through the parcel's stored updates. Other parcels are not affected. New tests in `tests/test_delivered_lock.py` cover every status at times before, at and after the delivery, check that history stays the same and the check order holds, and test `is_delivered` with known and unknown numbers. All 56 tests pass with `python3 -m pytest -q`.

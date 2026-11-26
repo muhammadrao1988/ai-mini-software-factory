@@ -7,9 +7,12 @@
 A task goes in. An AI agent builds it alone in its own copy of the project. Hidden tests, which the agent
 never sees, judge the result. A report shows what passed, how many tries it took and what it cost.
 
-Usage:  uv run factory.py tasks/01-discount-code
-        uv run factory.py tasks            (every task in the folder)
-        uv run factory.py tasks --tickets  (the same tasks, each written as a one-line ticket)
+Usage:  uv run factory.py start "an online parcel tracking system" --name tracking
+        uv run factory.py build products/tracking       (build your product, task by task)
+
+        uv run factory.py tasks/01-discount-code         (the demo: one task on the demo shop)
+        uv run factory.py tasks                          (the demo: every task)
+        uv run factory.py tasks --tickets                (the demo: each task as a one-line ticket)
 """
 from __future__ import annotations
 
@@ -169,8 +172,9 @@ def notes_for(failed: list[str], hidden: Path) -> list[str]:
     return notes
 
 
-def run_task(task: Path, text: str = "task.md") -> dict:
+def run_task(task: Path, text: str = "task.md", hidden: Path | None = None) -> dict:
     spec = (task / text).read_text()
+    hidden = hidden or task / "hidden"
     workspace = new_workspace(task)
     result = {"task": task.name, "passed": False, "tries": 0, "seconds": 0, "cost": 0.0, "workspace": str(workspace),
               "history": []}
@@ -183,8 +187,8 @@ def run_task(task: Path, text: str = "task.md") -> dict:
         run(["git", "add", "-A", "-N"], workspace)
         (logs / f"try-{attempt}-change.diff").write_text(run(["git", "diff", "HEAD"], workspace).stdout)
         seen_pass, seen_fail, _ = pytest(workspace / "tests", workspace, logs / f"try-{attempt}-visible.txt")
-        hid_pass, hid_fail, failed = pytest(task / "hidden", workspace, logs / f"try-{attempt}-hidden.txt")
-        notes = notes_for(failed, task / "hidden")
+        hid_pass, hid_fail, failed = pytest(hidden, workspace, logs / f"try-{attempt}-hidden.txt")
+        notes = notes_for(failed, hidden)
         result["tries"] = attempt
         result["seconds"] += round(time.time() - started)
         result["cost"] += answer["cost"]
@@ -204,6 +208,109 @@ def run_task(task: Path, text: str = "task.md") -> dict:
     return result
 
 
+PLANNER = """You plan small software products for a team of AI coding agents.
+You get a product idea. Break it into small tasks that are built one after the other. Each task adds one thing.
+
+Rules for the product:
+- Plain Python, standard library only. No web framework, no outside packages, no network.
+- All code lives in the package `app` (the folder app/ with __init__.py). Data is kept in memory or in sqlite3.
+- The first task creates the core. Later tasks build on the earlier ones and must not break them.
+
+Rules for each task:
+- name: a short name in small letters with dashes, like "add-status-history".
+- task: the full spec in plain, simple English. Name every public function or class, its inputs, what it
+  returns and which errors it raises. Say in which module of `app` it lives.
+- ticket: the same task as one short line.
+- hidden_tests: a complete pytest file that checks the task through the public names in the spec only.
+  6 to 9 tests. Every test starts with a docstring of one plain sentence that says what must be true, for
+  example: An unknown tracking number must raise KeyError. Check normal cases and edge cases.
+  The tests must be fair: a careful programmer who reads only the task text must be able to pass all of them.
+"""
+
+PLAN_SHAPE = {"type": "object", "required": ["summary", "tasks"], "additionalProperties": False, "properties": {
+    "summary": {"type": "string"},
+    "tasks": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                                         "required": ["name", "task", "ticket", "hidden_tests"],
+                                         "properties": {"name": {"type": "string"}, "task": {"type": "string"},
+                                                        "ticket": {"type": "string"},
+                                                        "hidden_tests": {"type": "string"}}}}}}
+
+
+def checklist(hidden: Path) -> str:
+    """The hidden tests as a list of plain sentences, so a person can read what will be checked without reading code."""
+    text = "\n".join(f.read_text() for f in sorted(hidden.glob("test_*.py")))
+    points = [" ".join(s.split()) for s in re.findall(r'def test_\w+\(.*?\):\s+"""(.*?)"""', text, re.S)]
+    return ("# What the hidden tests check\n\nThe agent that builds this task never sees this list or the tests.\n"
+            "You can: read it, and change the tests in `hidden/test_hidden.py` if a point is not what you want.\n\n"
+            + "\n".join(f"- {point}" for point in points) + "\n")
+
+
+def start(idea: str, name: str, how_many: int) -> None:
+    """Turn an idea into a new product folder: an empty starter project and a list of tasks with hidden tests."""
+    product = HERE / "products" / name
+    if product.exists():
+        sys.exit(f"{product} already exists. Choose another --name, or delete that folder.")
+    print(f"The planner is turning your idea into {how_many} small tasks ...", flush=True)
+    done = subprocess.run(["claude", "-p", "--model", MODEL, "--output-format", "json", "--tools", "",
+                           "--system-prompt", PLANNER, "--json-schema", json.dumps(PLAN_SHAPE)],
+                          input=f"The product idea: {idea}\n\nMake exactly {how_many} tasks.",
+                          env=agent_env(), capture_output=True, text=True, timeout=1200)
+    try:
+        plan = json.loads(done.stdout)["structured_output"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        sys.exit("The planner did not return a plan:\n" + (done.stderr or done.stdout)[-500:])
+
+    project = product / "project"
+    (project / "app").mkdir(parents=True)
+    (project / "tests").mkdir()
+    (project / "app" / "__init__.py").write_text("")
+    (project / "tests" / "test_start.py").write_text("def test_the_package_loads():\n    import app  # noqa: F401\n")
+    version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    (project / "README.md").write_text(f"# {name}\n\n{plan['summary']}\n\nBuilt and tested by the factory with Python {version}. "
+                                       f"Run the tests with `uv run --python {version} --with pytest pytest -q`.\n")
+    (product / "idea.md").write_text(f"{idea}\n\n{plan['summary']}\n")
+    for number, task in enumerate(plan["tasks"], 1):
+        slug = re.sub(r"[^a-z0-9-]+", "-", task["name"].lower()).strip("-") or "task"
+        folder = product / "tasks" / f"{number:02d}-{slug}"
+        (folder / "hidden").mkdir(parents=True)
+        (folder / "task.md").write_text(task["task"].rstrip() + "\n")
+        (folder / "ticket.md").write_text(task["ticket"].rstrip() + "\n")
+        (folder / "hidden" / "test_hidden.py").write_text(task["hidden_tests"].rstrip() + "\n")
+        (folder / "checklist.md").write_text(checklist(folder / "hidden"))
+        print(f"  {folder.name}: {task['ticket'].strip()}")
+    print(f"\nYour product folder: {product}"
+          f"\nRead task.md and checklist.md in each task folder first. The checklist says, in plain words, what the"
+          f"\nhidden tests will check. The tests are yours: change anything that is not what you want."
+          f"\nThen build it:  uv run factory.py build products/{name}")
+
+
+def build(product: Path, text: str) -> list[dict]:
+    """Build a product task by task. Each task starts from the work of the tasks before it, and is judged by
+    the hidden tests of every task so far, so a new task cannot quietly break an old one."""
+    global PROJECT
+    PROJECT = product / "project"
+    tasks = sorted(p for p in (product / "tasks").iterdir() if (p / "task.md").exists())
+    if not PROJECT.is_dir() or not tasks:
+        sys.exit(f"{product} is not a product folder. Make one with: uv run factory.py start \"your idea\" --name my-product")
+    results, checks = [], Path(tempfile.mkdtemp(prefix="factory-checks-"))
+    for task in tasks:
+        for test_file in (task / "hidden").glob("test_*.py"):
+            shutil.copy(test_file, checks / f"test_{task.name.replace('-', '_')}_{test_file.stem[5:]}.py")
+        print(f"Task {task.name}", flush=True)
+        result = run_task(task, text, hidden=checks)
+        results.append(result)
+        if not result["passed"]:
+            print(f"  Stopped: {task.name} did not pass in {MAX_TRIES} tries. The product keeps the work up to the task before it."
+                  f"\n  Look at out/logs/{task.name}/ . Often the task text or a hidden test needs a fix.")
+            break
+        # the passed work becomes the new state of the product
+        workspace = Path(result["workspace"])
+        shutil.rmtree(PROJECT)
+        shutil.copytree(workspace, PROJECT, ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache", "*.pyc"))
+    shutil.rmtree(checks, ignore_errors=True)
+    return results
+
+
 def report(results: list[dict]) -> str:
     lines = ["| Task | Result | Tries | Time | Cost (API price) |", "|---|---|---|---|---|"]
     for r in results:
@@ -214,40 +321,63 @@ def report(results: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the mini software factory on one task or a folder of tasks.")
-    parser.add_argument("path", type=Path)
-    parser.add_argument("--tickets", action="store_true",
-                        help="give the agent the one-line ticket (ticket.md) instead of the full spec (task.md)")
-    parser.add_argument("--project", type=Path,
-                        help="your own Python project to work on (default: the demo shop). It must have a tests/ folder")
-    parser.add_argument("--api-key", action="store_true",
-                        help="pay with the ANTHROPIC_API_KEY in your environment instead of the Claude sign-in")
-    args = parser.parse_args()
-    global USE_API_KEY, PROJECT
-    USE_API_KEY = args.api_key
-    if args.project:
-        PROJECT = args.project.resolve()
-        if not (PROJECT / "tests").is_dir():
-            sys.exit(f"{PROJECT} has no tests/ folder.")
-    if USE_API_KEY and not os.environ.get("ANTHROPIC_API_KEY"):
-        sys.exit("--api-key was given, but ANTHROPIC_API_KEY is not set.")
-    if not shutil.which("claude"):
-        sys.exit("Claude Code is not installed. See the README, step 1.")
-    tasks = [args.path] if (args.path / "task.md").exists() else sorted(p for p in args.path.iterdir() if (p / "task.md").exists())
-    if not tasks:
-        sys.exit(f"No task found in {args.path}")
-    results = []
-    for task in tasks:
-        print(f"Task {task.name}", flush=True)
-        results.append(run_task(task, "ticket.md" if args.tickets else "task.md"))
+def finish(results: list[dict], extra: str = "") -> None:
     out = HERE / "out"
     out.mkdir(exist_ok=True)
     (out / "results.json").write_text(json.dumps(results, indent=2))
     table = report(results)
-    print(f"\nWhat each agent did, what it changed and every verdict: {out / 'logs'}")
     (out / "report.md").write_text(table + "\n")
+    print(f"\nWhat each agent did, what it changed and every verdict: {out / 'logs'}{extra}")
     print("\n" + table)
+
+
+def main() -> None:
+    global USE_API_KEY, PROJECT
+    parser = argparse.ArgumentParser(description="A mini software factory. Start a product from an idea, build it, "
+                                                 "or run the demo tasks.")
+    parser.add_argument("command_or_path", help='"start", "build", or the path of a demo task folder')
+    parser.add_argument("target", nargs="?", help='for start: your idea in quotes. For build: the product folder')
+    parser.add_argument("--name", default="my-product", help="start: the name of the new product folder")
+    parser.add_argument("--tasks", type=int, default=5, help="start: how many tasks the planner makes (default 5)")
+    parser.add_argument("--tickets", action="store_true",
+                        help="give the agent the one-line ticket (ticket.md) instead of the full spec (task.md)")
+    parser.add_argument("--project", type=Path,
+                        help="demo tasks only: your own Python project to work on. It must have a tests/ folder")
+    parser.add_argument("--api-key", action="store_true",
+                        help="pay with the ANTHROPIC_API_KEY in your environment instead of the Claude sign-in")
+    args = parser.parse_args()
+    USE_API_KEY = args.api_key
+    if USE_API_KEY and not os.environ.get("ANTHROPIC_API_KEY"):
+        sys.exit("--api-key was given, but ANTHROPIC_API_KEY is not set.")
+    if not shutil.which("claude"):
+        sys.exit("Claude Code is not installed. See the README, step 1.")
+    text = "ticket.md" if args.tickets else "task.md"
+
+    if args.command_or_path == "start":
+        if not args.target:
+            sys.exit('Give your idea in quotes:  uv run factory.py start "an online parcel tracking system" --name tracking')
+        start(args.target, re.sub(r"[^a-z0-9-]+", "-", args.name.lower()).strip("-") or "my-product", args.tasks)
+        return
+    if args.command_or_path == "build":
+        if not args.target:
+            sys.exit("Give the product folder:  uv run factory.py build products/tracking")
+        product = Path(args.target).resolve()
+        finish(build(product, text), f"\nYour product: {product / 'project'}")
+        return
+
+    path = Path(args.command_or_path)
+    if args.project:
+        PROJECT = args.project.resolve()
+        if not (PROJECT / "tests").is_dir():
+            sys.exit(f"{PROJECT} has no tests/ folder.")
+    tasks = [path] if (path / "task.md").exists() else sorted(p for p in path.iterdir() if (p / "task.md").exists()) if path.is_dir() else []
+    if not tasks:
+        sys.exit(f"No task found in {path}")
+    results = []
+    for task in tasks:
+        print(f"Task {task.name}", flush=True)
+        results.append(run_task(task, text))
+    finish(results)
 
 
 if __name__ == "__main__":
