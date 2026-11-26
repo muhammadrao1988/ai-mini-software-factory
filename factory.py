@@ -9,6 +9,7 @@ never sees, judge the result. A report shows what passed, how many tries it took
 
 Usage:  uv run factory.py tasks/01-discount-code
         uv run factory.py tasks            (every task in the folder)
+        uv run factory.py tasks --tickets  (the same tasks, each written as a one-line ticket)
 """
 from __future__ import annotations
 
@@ -114,8 +115,8 @@ def notes_for(failed: list[str], hidden: Path) -> list[str]:
     return notes
 
 
-def run_task(task: Path) -> dict:
-    spec = (task / "task.md").read_text()
+def run_task(task: Path, text: str = "task.md") -> dict:
+    spec = (task / text).read_text()
     workspace = new_workspace(task)
     result = {"task": task.name, "passed": False, "tries": 0, "seconds": 0, "cost": 0.0, "workspace": str(workspace),
               "history": []}
@@ -160,6 +161,8 @@ def report(results: list[dict]) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the mini software factory on one task or a folder of tasks.")
     parser.add_argument("path", type=Path)
+    parser.add_argument("--tickets", action="store_true",
+                        help="give the agent the one-line ticket (ticket.md) instead of the full spec (task.md)")
     args = parser.parse_args()
     if not shutil.which("claude"):
         sys.exit("Claude Code is not installed. See the README, step 1.")
@@ -169,7 +172,7 @@ def main() -> None:
     results = []
     for task in tasks:
         print(f"Task {task.name}", flush=True)
-        results.append(run_task(task))
+        results.append(run_task(task, "ticket.md" if args.tickets else "task.md"))
     out = HERE / "out"
     out.mkdir(exist_ok=True)
     (out / "results.json").write_text(json.dumps(results, indent=2))
