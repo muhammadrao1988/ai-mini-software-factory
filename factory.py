@@ -42,11 +42,16 @@ def run(args: list[str], cwd: Path, env: dict | None = None, timeout: int = 900)
     return subprocess.run(args, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout)
 
 
+USE_API_KEY = False
+
+
 def agent_env() -> dict:
-    """The agent runs on the Claude Code sign-in. API keys are removed so no bill can appear by accident."""
+    """The agent runs on the Claude Code sign-in. API keys are removed so no bill can appear by accident,
+    unless the factory was started with --api-key."""
     env = dict(os.environ)
     for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
-        env.pop(name, None)
+        if not USE_API_KEY:
+            env.pop(name, None)
     # put this program's own Python first, so "python3 -m pytest" works for the agent
     env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
     return env
@@ -163,7 +168,13 @@ def main() -> None:
     parser.add_argument("path", type=Path)
     parser.add_argument("--tickets", action="store_true",
                         help="give the agent the one-line ticket (ticket.md) instead of the full spec (task.md)")
+    parser.add_argument("--api-key", action="store_true",
+                        help="pay with the ANTHROPIC_API_KEY in your environment instead of the Claude sign-in")
     args = parser.parse_args()
+    global USE_API_KEY
+    USE_API_KEY = args.api_key
+    if USE_API_KEY and not os.environ.get("ANTHROPIC_API_KEY"):
+        sys.exit("--api-key was given, but ANTHROPIC_API_KEY is not set.")
     if not shutil.which("claude"):
         sys.exit("Claude Code is not installed. See the README, step 1.")
     tasks = [args.path] if (args.path / "task.md").exists() else sorted(p for p in args.path.iterdir() if (p / "task.md").exists())
