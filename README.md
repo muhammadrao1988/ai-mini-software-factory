@@ -3,7 +3,18 @@
 A small software factory you can run on a laptop. You give it an idea. A planner agent breaks it into small
 tasks, builder agents build them alone, and hidden tests judge every step.
 
-![A task goes to an AI agent, hidden tests judge the work, a report comes out](docs/how-it-works.png)
+![Your idea goes to a planner agent, builder agents build each task, hidden tests judge the work, a report comes out](docs/how-it-works.png)
+
+## What this is
+
+This is a **starting idea**, not a finished product. It shows, in one small file, how a software factory works, so
+you can understand it and build your own on top of it.
+
+- It builds the **backend logic** of a product: the rules and the data, in plain Python.
+- It is made for **small, simple things**: a tracking system, a booking system, a price calculator.
+- It does not build screens, websites or apps.
+
+If you want more, the part "Take it further" below shows where to add it.
 
 ## The problem
 
@@ -208,6 +219,23 @@ uv run factory.py tasks --api-key
 Without `--api-key`, the factory uses your Claude sign-in and ignores any API key, so you never get a bill by
 accident. A full run of ten tasks costs about $2 at API prices.
 
+## Take it further
+
+The factory is one file, so every part is easy to find and change.
+
+| You want | Where to change it in `factory.py` |
+|---|---|
+| A web API or screens on top of the logic | Change the planner's rules (`PLANNER`): allow a web framework and say how the tests call it |
+| Another language than Python | Change the planner's rules and the judge (`pytest`), which runs the tests |
+| A real database | Change the planner's rules; give the judge a test database |
+| Bigger products | Raise `--tasks`, or run `start` again for the next part of the product |
+| Several agents at the same time | `build` runs tasks one by one; tasks that do not depend on each other could run side by side |
+| Tasks from GitHub issues, results as pull requests | Replace the task folders (`start`) and the last step of `build` |
+| A stricter judge | Add your own tests to `hidden/` before you build |
+
+The three parts stay the same in any size of factory: someone plans, someone builds, and a judge that the builder
+cannot see decides.
+
 ## A lesson from building it
 
 On my very first run, the judge was wrong, not the agent. It failed a correct answer, and the agent spent two more
@@ -218,8 +246,7 @@ itself before any agent runs. A factory is only as good as its judge.
 
 ## Good to know
 
-It is teaching-size. It builds the logic of a product in plain Python: no screens, no web server, no database
-server. It never publishes anything by itself.
+It never publishes or merges anything by itself. It stops at the report, and a person decides what happens next.
 
 <details>
 <summary>More details: the files, writing your own task, settings</summary>
