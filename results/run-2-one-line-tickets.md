@@ -24,5 +24,5 @@ tests found 10 wrong points. After one short note for each wrong point, all 4 pa
 |---|---|---|---|
 | 03 Refuse bad input | 18 passed | 1 failed | A quantity like 1.5 was accepted |
 | 04 Merge same items | 5 passed | 2 failed | The same item at a different price was accepted |
-| 06 Shipping | 5 passed | 3 failed | Shipping was not charged as the hidden tests expect (below 50.00, at 49.99, empty cart) |
+| 06 Shipping | 5 passed | 3 failed | The shipping cost was not added to the total, and an empty cart was charged 4.99 |
 | 09 Save and load | 5 passed | 4 failed | Broken saved data was not refused |
