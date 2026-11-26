@@ -182,6 +182,8 @@ def one_day(today: datetime.date, open_pr: bool) -> None:
         branch += "-" + datetime.datetime.now().strftime("%H%M")
     worktree = Path(tempfile.mkdtemp(prefix="owner-work-")) / "repo"
     sh(["git", "worktree", "add", "-q", "-b", branch, str(worktree), "HEAD"])
+    if (HERE / ".claude" / "hooks").is_dir():  # keep local git hooks (for example an account guard) working on the branch
+        shutil.copytree(HERE / ".claude" / "hooks", worktree / ".claude" / "hooks")
     prompt = (f"You are working on the project in this folder. Today's task:\n\n{plan['task']}\n\n"
               f"Rules of the project:\n{(HERE / 'GOAL.md').read_text().split('## Rules for every day')[1]}")
     history, wrong, verdict = [], ["not started"], {"accept": False, "faults": [], "summary": ""}
@@ -200,6 +202,7 @@ def one_day(today: datetime.date, open_pr: bool) -> None:
                                         + f"\n\nTHE CHANGE\n{diff[:60000]}", VERDICT)
                 wrong = [] if verdict["accept"] else [f"The critic found: {fault}" for fault in verdict["faults"]]
             history.append({"try": attempt, "steps": answer.get("steps", []), "said": answer["said"], "wrong": wrong})
+            (logs / "history.json").write_text(json.dumps({"history": history, "verdict": verdict}, indent=2))
             print("   " + ("all checks passed, and the critic accepted it" if not wrong else f"{len(wrong)} point(s) wrong"))
             for point in wrong:
                 print(f"     - {point[:160]}")
