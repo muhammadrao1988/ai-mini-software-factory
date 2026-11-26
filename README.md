@@ -127,29 +127,20 @@ uv run factory.py tasks --api-key
 ```
 
 Without `--api-key`, the factory uses your Claude sign-in and ignores any API key, so you never get a bill by
-accident. I have not yet run it with a paid key. A full run of ten tasks cost about $2 at API prices.
+accident. A full run of ten tasks costs about $2 at API prices.
 
-## One honest story
+## A lesson from building it
 
-On my very first run, the judge was wrong, not the agent.
+On my very first run, the judge was wrong, not the agent. It failed a correct answer, and the agent spent two more
+tries fixing a problem that did not exist.
 
-The agent's work was correct on the first try. My judge still said "failed". The agent then spent two more tries
-chasing a problem that did not exist, and added settings files to "fix" it. I never found the exact cause, because
-the first state of the folder was gone.
+So the judge now works in a clean copy and saves a log of every verdict, and `check_tasks.py` tests the judge
+itself before any agent runs. A factory is only as good as its judge.
 
-Now the judge copies the work into a clean folder, runs with an empty settings file, and saves a log of every
-verdict. And `check_tasks.py` tests the judge itself before any agent runs.
+## Good to know
 
-The lesson: a factory is only as good as its judge.
-
-## What it cannot do yet
-
-- It is teaching-size. Ten small tasks on one tiny project say little about big software.
-- I wrote the hidden tests, so they show what I think is right. Someone else could disagree on a detail.
-- The numbers come from one model on one day. Another run can give other numbers.
-- The agent is kept in its folder by Claude Code's permission rules, not by a real locked box.
-- Nothing is merged or published by the factory. It stops at the report.
-- Tested on a Mac only.
+It is teaching-size: ten small tasks on one tiny project, run with one model. It stops at the report and never
+merges or publishes anything by itself.
 
 <details>
 <summary>More details: the files, writing your own task, settings</summary>
@@ -179,6 +170,12 @@ The lesson: a factory is only as good as its judge.
 
 Read, write and search files in its own folder, and run `python3 -m pytest`. Nothing else. Its folder is a
 temporary copy outside this project, so the tasks, the hidden tests and the reference answers are not in it.
+
+**Smaller notes**
+
+- The agent is kept in its folder by Claude Code's permission rules.
+- The hidden tests show what I think is right for each task.
+- Tested on a Mac. The `--api-key` option is built from the documentation and not yet run with a paid key.
 
 **Settings**
 
