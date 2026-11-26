@@ -1,0 +1,212 @@
+[
+  {
+    "task": "01-discount-code",
+    "passed": true,
+    "tries": 1,
+    "seconds": 25,
+    "cost": 0.1702,
+    "workspace": "/var/folders/7b/v5_z25jn6lsdr2vqf4dyy9tm0000gn/T/factory-01-discount-code-nj6ahf_0",
+    "history": [
+      {
+        "try": 1,
+        "agent_ok": true,
+        "agent_said": "I added `apply_discount(code)` to `Cart` in `shop/cart.py`, and all 10 tests pass. The codes `SAVE10`, `SAVE25` and `HALF` take 10%, 25% and 50% off, and they work in any case, so `save10` is accepted. An unknown code raises `ValueError` and leaves any code already applied in place. Applying a second code replaces the first. `total()` now returns the subtotal minus the discount, rounded to 2 decim",
+        "visible_tests": "10 passed, 0 failed",
+        "hidden_tests": "9 passed, 0 failed",
+        "notes": []
+      }
+    ],
+    "change": [
+      " 2 files changed, 61 insertions(+), 1 deletion(-)"
+    ]
+  },
+  {
+    "task": "02-remove-item",
+    "passed": true,
+    "tries": 1,
+    "seconds": 17,
+    "cost": 0.1504,
+    "workspace": "/var/folders/7b/v5_z25jn6lsdr2vqf4dyy9tm0000gn/T/factory-02-remove-item-hl_rhdmn",
+    "history": [
+      {
+        "try": 1,
+        "agent_ok": true,
+        "agent_said": "I added `Cart.remove_item(name)` in `shop/cart.py`. It removes every line with that name, so `subtotal()` and `total()` stop counting the item. If no line has that name, it raises `KeyError` and leaves the cart as it was. I also added two tests in `tests/test_cart.py`: one removes an item that appears on two lines and checks the subtotal and total, and one checks that removing a missing item raise",
+        "visible_tests": "4 passed, 0 failed",
+        "hidden_tests": "6 passed, 0 failed",
+        "notes": []
+      }
+    ],
+    "change": [
+      " 2 files changed, 27 insertions(+)"
+    ]
+  },
+  {
+    "task": "03-check-input",
+    "passed": true,
+    "tries": 1,
+    "seconds": 21,
+    "cost": 0.159,
+    "workspace": "/var/folders/7b/v5_z25jn6lsdr2vqf4dyy9tm0000gn/T/factory-03-check-input-9xtzrhdv",
+    "history": [
+      {
+        "try": 1,
+        "agent_ok": true,
+        "agent_said": "I changed `add_item` in `shop/cart.py` so it checks everything before it adds the item, which means a refused call leaves the cart exactly as it was. It raises `ValueError` when the name is empty or only spaces, when the price is negative (or not a number, such as NaN), and when the quantity is not a whole number or is less than 1. A price of 0 is allowed. Two choices go beyond the spec: `True`/`F",
+        "visible_tests": "11 passed, 0 failed",
+        "hidden_tests": "10 passed, 0 failed",
+        "notes": []
+      }
+    ],
+    "change": [
+      " 2 files changed, 40 insertions(+)"
+    ]
+  },
+  {
+    "task": "04-merge-lines",
+    "passed": true,
+    "tries": 1,
+    "seconds": 22,
+    "cost": 0.1647,
+    "workspace": "/var/folders/7b/v5_z25jn6lsdr2vqf4dyy9tm0000gn/T/factory-04-merge-lines-qz5731cj",
+    "history": [
+      {
+        "try": 1,
+        "agent_ok": true,
+        "agent_said": "I changed `Cart.add_item` in `shop/cart.py` so the same item stays on one line. Adding an item whose name is already in the cart at the same price adds to that line's quantity. Adding it at a different price raises `ValueError` before anything is changed, so the cart stays as it was. Prices are compared after rounding to two decimal places, which stops tiny float differences from counting as a dif",
+        "visible_tests": "6 passed, 0 failed",
+        "hidden_tests": "6 passed, 0 failed",
+        "notes": []
+      }
+    ],
+    "change": [
+      " 2 files changed, 57 insertions(+)"
+    ]
+  },
+  {
+    "task": "05-sales-tax",
+    "passed": true,
+    "tries": 1,
+    "seconds": 22,
+    "cost": 0.1607,
+    "workspace": "/var/folders/7b/v5_z25jn6lsdr2vqf4dyy9tm0000gn/T/factory-05-sales-tax-4ke6mp9l",
+    "history": [
+      {
+        "try": 1,
+        "agent_ok": true,
+        "agent_said": "I added sales tax to `Cart` in `shop/cart.py`, and all 8 tests pass. `Cart(tax_rate=0.0)` stores the rate and raises `ValueError` if it is negative. The new `tax()` method rounds half up to 2 decimal places, so 35.00 \u00d7 0.075 gives 2.63. It works in `Decimal` because ordinary float rounding would give 2.62 here. `total()` is now the subtotal plus the tax, and `subtotal()` is unchanged. In `tests/te",
+        "visible_tests": "8 passed, 0 failed",
+        "hidden_tests": "8 passed, 0 failed",
+        "notes": []
+      }
+    ],
+    "change": [
+      " 2 files changed, 55 insertions(+), 2 deletions(-)"
+    ]
+  },
+  {
+    "task": "06-shipping",
+    "passed": true,
+    "tries": 1,
+    "seconds": 18,
+    "cost": 0.1446,
+    "workspace": "/var/folders/7b/v5_z25jn6lsdr2vqf4dyy9tm0000gn/T/factory-06-shipping-665zz37t",
+    "history": [
+      {
+        "try": 1,
+        "agent_ok": true,
+        "agent_said": "I added a `shipping()` method to `Cart` in `shop/cart.py`, using two new constants: `SHIPPING_COST = 4.99` and `FREE_SHIPPING_THRESHOLD = 50.00`. Shipping is 0 for a cart with no items or a subtotal of 50.00 or more, and 4.99 otherwise. `total()` now returns the subtotal plus shipping, rounded to two decimals, and `subtotal()` is unchanged. Because of the new rule, the existing `test_total_adds_up",
+        "visible_tests": "7 passed, 0 failed",
+        "hidden_tests": "7 passed, 0 failed",
+        "notes": []
+      }
+    ],
+    "change": [
+      " 2 files changed, 45 insertions(+), 2 deletions(-)"
+    ]
+  },
+  {
+    "task": "07-receipt",
+    "passed": true,
+    "tries": 1,
+    "seconds": 16,
+    "cost": 0.147,
+    "workspace": "/var/folders/7b/v5_z25jn6lsdr2vqf4dyy9tm0000gn/T/factory-07-receipt-dulzb3v1",
+    "history": [
+      {
+        "try": 1,
+        "agent_ok": true,
+        "agent_said": "I added `Cart.receipt()` to `shop/cart.py`. It returns one line per item in the order the items were added, like `2 x pen @ 1.50 = 3.00`, then a last line `TOTAL 13.00`. All amounts have 2 decimal places, lines are joined with new lines, and there is no new line at the end. An empty cart gives only `TOTAL 0.00`. I added three tests to `tests/test_cart.py`: one for an empty cart, one for item order",
+        "visible_tests": "5 passed, 0 failed",
+        "hidden_tests": "6 passed, 0 failed",
+        "notes": []
+      }
+    ],
+    "change": [
+      " 2 files changed, 29 insertions(+)"
+    ]
+  },
+  {
+    "task": "08-bulk-price",
+    "passed": true,
+    "tries": 1,
+    "seconds": 28,
+    "cost": 0.1766,
+    "workspace": "/var/folders/7b/v5_z25jn6lsdr2vqf4dyy9tm0000gn/T/factory-08-bulk-price-ifdavc0x",
+    "history": [
+      {
+        "try": 1,
+        "agent_ok": true,
+        "agent_said": "I added the bulk price to `shop/cart.py`: any line with a quantity of 3 or more now gets 10% off. The new `line_total(name)` returns that item's amount after the bulk price, rounded to 2 decimal places, and raises `KeyError` if the item isn't in the cart. `total()` is now the sum of the line totals, and `subtotal()` still gives the amount before the bulk price. One case the task didn't cover: if t",
+        "visible_tests": "8 passed, 0 failed",
+        "hidden_tests": "8 passed, 0 failed",
+        "notes": []
+      }
+    ],
+    "change": [
+      " 2 files changed, 63 insertions(+), 1 deletion(-)"
+    ]
+  },
+  {
+    "task": "09-save-and-load",
+    "passed": true,
+    "tries": 1,
+    "seconds": 25,
+    "cost": 0.1705,
+    "workspace": "/var/folders/7b/v5_z25jn6lsdr2vqf4dyy9tm0000gn/T/factory-09-save-and-load-gbbwsft9",
+    "history": [
+      {
+        "try": 1,
+        "agent_ok": true,
+        "agent_said": "I added `to_dict()` and the class method `Cart.from_dict(data)` to `shop/cart.py`. `to_dict()` returns `{\"items\": [{\"name\", \"price\", \"quantity\"}, ...]}`, building a new dictionary every time, so changing the result doesn't change the cart. `from_dict` rebuilds the cart through `add_item`, so items keep their order and the total comes out the same. It raises `ValueError` if `\"items\"` is missing or ",
+        "visible_tests": "11 passed, 0 failed",
+        "hidden_tests": "10 passed, 0 failed",
+        "notes": []
+      }
+    ],
+    "change": [
+      " 2 files changed, 80 insertions(+)"
+    ]
+  },
+  {
+    "task": "10-biggest-line",
+    "passed": true,
+    "tries": 1,
+    "seconds": 19,
+    "cost": 0.1537,
+    "workspace": "/var/folders/7b/v5_z25jn6lsdr2vqf4dyy9tm0000gn/T/factory-10-biggest-line-iw5pcxq9",
+    "history": [
+      {
+        "try": 1,
+        "agent_ok": true,
+        "agent_said": "I added `most_expensive()` and `clear()` to `Cart` in `shop/cart.py`. `most_expensive()` works out each line's cost (price times quantity) and returns the name of the costliest line. It returns `None` for an empty cart, and if two lines cost the same it keeps the one added first. It rounds each cost to cents before comparing, because otherwise lines that should tie, like 0.10\u00d73 and 0.30\u00d71, don't c",
+        "visible_tests": "6 passed, 0 failed",
+        "hidden_tests": "7 passed, 0 failed",
+        "notes": []
+      }
+    ],
+    "change": [
+      " 2 files changed, 42 insertions(+)"
+    ]
+  }
+]
