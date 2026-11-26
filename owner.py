@@ -120,7 +120,8 @@ def look_around(today: datetime.date) -> str:
              "NOTES FROM THE HUMAN OWNER\n" + (HERE / "OWNER-NOTES.md").read_text(),
              "THE LAST JOURNAL ENTRIES\n" + ("\n\n".join(e.read_text() for e in entries) or "(none yet: this is the first day)"),
              "THE LAST CHANGES\n" + sh(["git", "log", "--format=%ad  %s", "--date=short", "-12"]),
-             "THE FILES\n" + sh(["git", "ls-files", "--", ".", ":!results", ":!products/*/logs", ":!tasks", ":!reference"]),
+             "THE FILES (the folders tasks/, reference/, results/ and products/*/logs/ also exist; their files are not listed)\n"
+             + sh(["git", "ls-files", "--", ".", ":!results", ":!products/*/logs", ":!tasks", ":!reference"]),
              "factory.py\n" + (HERE / "factory.py").read_text(),
              "tests/test_factory.py\n" + (HERE / "tests" / "test_factory.py").read_text()]
     return "\n\n==========\n\n".join(parts)

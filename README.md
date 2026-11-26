@@ -219,6 +219,31 @@ uv run factory.py tasks --api-key
 Without `--api-key`, the factory uses your Claude sign-in and ignores any API key, so you never get a bill by
 accident. A full run of ten tasks costs about $2 at API prices.
 
+## The owner agent: nobody gives it a task
+
+Most AI tools wait for a task, do it, and say "done, please check". A person who owns a job works differently:
+they keep the goal in mind, start by themselves, look around, check their own work, and speak up when it matters.
+
+`owner.py` is an experiment in that. It has only a goal with a date, written in [`GOAL.md`](GOAL.md). One command
+is one working day:
+
+```bash
+uv run owner.py day
+```
+
+| What a person does | What the owner agent does |
+|---|---|
+| Keeps the goal in mind | Reads `GOAL.md` first, and counts the days left |
+| Looks around before starting | Reads the code, yesterday's journal, and your notes in `OWNER-NOTES.md` |
+| Keeps learning | A scout agent reads what is new on the internet. It can only read; it cannot change anything |
+| Decides what matters most today | Picks one small step, and writes the checks for it **before** any code exists |
+| Does the work | A builder agent writes the code on its own branch |
+| Checks before saying "done" | The project's tests, the checks written earlier, and a critic agent that looks for faults |
+| Reports honestly | Writes a journal entry and opens a proposed change. A failed day keeps no code, only the entry |
+| Asks when it is not its call | Puts questions for you in the journal. Merging is always your decision |
+
+The journal is in [`journal/`](journal/): what it read, what it decided and why, what it did, and what it asks you.
+
 ## Take it further
 
 The factory is one file, so every part is easy to find and change.
@@ -256,6 +281,8 @@ It never publishes or merges anything by itself. It stops at the report, and a p
 | File or folder | What it is |
 |---|---|
 | `factory.py` | The factory: workspace, agent, judge, retry, report |
+| `owner.py`, `GOAL.md`, `OWNER-NOTES.md`, `journal/` | The owner agent, its goal, your notes to it, and its daily entries |
+| `tests/` | Tests for the factory itself, without AI |
 | `check_tasks.py` | Tests the judge itself, without AI |
 | `products/` | Your products. `parcel-tracking` is the worked example |
 | `demo/` | The small shop project for the demo tasks |
