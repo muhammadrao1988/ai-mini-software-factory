@@ -195,7 +195,7 @@ def one_day(today: datetime.date, open_pr: bool) -> None:
             wrong = judge(worktree, checks, logs / f"try-{attempt}")
             sh(["git", "add", "-A"], worktree)
             diff = sh(["git", "diff", "--cached", "HEAD"], worktree)
-            (logs / f"try-{attempt}-change.diff").write_text(diff)
+            (logs / f"try-{attempt}-change.diff").write_text(diff + "\n")
             if not wrong:
                 verdict = think(CRITIC, f"THE TASK\n{plan['task']}\n\nWHAT COULD GO WRONG (from the planner)\n"
                                         + "\n".join(f"- {w}" for w in plan["what_could_go_wrong"])
