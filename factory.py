@@ -21,6 +21,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -160,6 +161,66 @@ def pytest(tests: Path, workspace: Path, log: Path) -> tuple[int, int, list[str]
     if errors or (not passed and not failed):
         failed = failed or [COULD_NOT_RUN]
     return passed, len(failed), failed
+
+
+SERVE = """import importlib, sys
+from wsgiref.simple_server import make_server
+application = getattr(importlib.import_module(sys.argv[1]), sys.argv[2])
+make_server("127.0.0.1", int(sys.argv[3]), application).serve_forever()"""
+
+
+class Service:
+    """A product's web app running in its own process; stop it with stop() or a with-block."""
+
+    def __init__(self, url: str, process: subprocess.Popen, output: Path):
+        self.url, self.process, self.output = url, process, output
+
+    def stop(self) -> None:
+        """End the process and remove its output file; safe to call more than once."""
+        if self.process.poll() is None:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+        self.process.wait()
+        self.output.unlink(missing_ok=True)
+
+    def __enter__(self) -> "Service":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.stop()
+
+
+def start_service(code: Path, entry: str = "app.web:application", wait: float = 10.0) -> Service:
+    """Serve the WSGI app `entry` ("module:name") from the folder `code` on a free port, and wait until it answers."""
+    module, colon, name = entry.partition(":")
+    if not module or not name or ":" in name:
+        raise ValueError(f"entry must look like 'module:name', not {entry!r}")
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    env = dict(os.environ, PYTHONPATH=str(code), PYTHONDONTWRITEBYTECODE="1")
+    handle, name_of_file = tempfile.mkstemp(prefix="factory-service-", suffix=".log")
+    output = Path(name_of_file)
+    with os.fdopen(handle, "wb") as out:  # the child keeps its own copy of the file
+        process = subprocess.Popen([sys.executable, "-c", SERVE, module, name, str(port)], cwd=code, env=env,
+                                   stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT)
+    service = Service(f"http://127.0.0.1:{port}", process, output)
+    deadline = time.monotonic() + wait
+    while process.poll() is None and time.monotonic() < deadline:
+        try:
+            socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
+            return service
+        except OSError:
+            time.sleep(0.05)
+    if process.poll() is None:
+        process.kill()
+    process.wait()
+    tail = output.read_text(errors="replace")[-500:]
+    service.stop()
+    raise RuntimeError(f"The service could not start: {tail}")
 
 
 def notes_for(failed: list[str], hidden: Path) -> list[str]:
