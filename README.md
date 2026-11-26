@@ -28,16 +28,33 @@ It is a factory in one file, small enough to read in ten minutes.
    test itself. The agent gets 3 tries at most.
 5. **A report comes out:** passed or failed, tries, time and cost.
 
+## What you can use it for
+
+| You want to | Do this |
+|---|---|
+| **Understand how a software factory works** | Read `factory.py`. It is one file. Then run one task and watch the agent work. |
+| **See how good your tickets are** | Write a ticket and the hidden tests for it. If the agent fails on the first try, the ticket left something out. |
+| **Compare AI models** | Run the same ten tasks with two models and compare passes, time and cost. |
+| **Try it on your own code** | Point it at your own Python project with `--project`, and give it your own task. |
+
 ## What you get
 
-While it runs, you see each try:
+While it runs, you see every step the agent takes:
 
 ```
 Task 06-shipping
   try 1: agent is working ...
+      agent reads shop/cart.py
+      agent reads tests/test_cart.py
+      agent changes shop/cart.py
+      agent changes tests/test_cart.py
+      agent runs: python3 -m pytest -q
     tests the agent can see: 5 passed, 0 failed
     hidden tests:            4 passed, 3 failed
   try 2: agent is working ...
+      agent changes shop/cart.py
+      agent changes tests/test_cart.py
+      agent runs: python3 -m pytest -q
     tests the agent can see: 8 passed, 0 failed
     hidden tests:            7 passed, 0 failed
 ```
@@ -50,7 +67,14 @@ At the end, one table (also saved as `out/report.md`):
 | 06-shipping | Passed | 2 | 41 s | $0.30 |
 | 07-receipt | Passed | 1 | 32 s | $0.08 |
 
-Every verdict of the judge is saved as a text file in `out/logs/`, so you can check it yourself.
+For every try, four files are saved in `out/logs/<task>/`:
+
+| File | What is in it |
+|---|---|
+| `try-1-agent.txt` | What the agent was told, every step it took, and what it said at the end |
+| `try-1-change.diff` | The exact lines the agent added and removed |
+| `try-1-visible.txt` | The result of the tests the agent can see |
+| `try-1-hidden.txt` | The verdict of the hidden tests |
 
 ## What I found
 
@@ -117,6 +141,23 @@ uv run factory.py tasks              # each task as a full spec
 uv run factory.py tasks --tickets    # each task as a one-line ticket
 ```
 
+### Step 6: Use it on your own project
+
+Your project must be a Python project with a `tests/` folder.
+
+1. Make a folder for your task, for example `my-tasks/add-login/`.
+2. Put the task in `task.md`, in plain words.
+3. Put your hidden tests in `hidden/test_hidden.py`. Start each test with one sentence that says what must be true.
+   That sentence is the note the agent gets when the test fails.
+4. Run it:
+
+```bash
+uv run factory.py my-tasks/add-login --project path/to/your/project
+```
+
+The agent works on a copy. Your project is never changed. If you like the result, the change is in
+`out/logs/add-login/try-1-change.diff`.
+
 ### No Claude subscription? Use an API key
 
 An API key is a paid key from Anthropic. Create one in the [Claude Console](https://platform.claude.com/), then:
@@ -168,20 +209,21 @@ merges or publishes anything by itself.
 
 **What the agent is allowed to do**
 
-Read, write and search files in its own folder, and run `python3 -m pytest`. Nothing else. Its folder is a
-temporary copy outside this project, so the tasks, the hidden tests and the reference answers are not in it.
+Read, write and search files in its own folder, and run the tests. Its folder is a temporary copy outside this
+project, so the tasks, the hidden tests and the reference answers are not in it.
 
 **Smaller notes**
 
 - The agent is kept in its folder by Claude Code's permission rules.
 - The hidden tests show what I think is right for each task.
-- Tested on a Mac. The `--api-key` option is built from the documentation and not yet run with a paid key.
+- Tested on a Mac, with the demo shop. The `--api-key` option is not yet run with a paid key.
 
 **Settings**
 
 | Setting | Default | What it does |
 |---|---|---|
 | `--tickets` | off | Give the agent `ticket.md` instead of `task.md` |
+| `--project` | the demo shop | The Python project the agents work on |
 | `--api-key` | off | Pay with `ANTHROPIC_API_KEY` instead of the Claude sign-in |
 | `FACTORY_MODEL` | `sonnet` | The AI model the agent uses |
 
