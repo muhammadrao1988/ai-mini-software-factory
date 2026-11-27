@@ -141,7 +141,8 @@ def where_to_start(today: datetime.date) -> tuple[str, str]:
     open_days = [b for b in sh(["git", "branch", "-r", "--no-merged", "origin/main", "--list", "origin/day/*",
                                 "--format=%(refname:short)"], check=False).splitlines() if b]
     if f"origin/day/{today.isoformat()}" in open_days:
-        sys.exit(f"Today's work is already done: branch day/{today.isoformat()} is on GitHub.")
+        print(f"Today's work is already done: branch day/{today.isoformat()} is on GitHub.")
+        sys.exit(0)
     if not open_days:
         return "HEAD", ""
     newest = sorted(open_days)[-1]
