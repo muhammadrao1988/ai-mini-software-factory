@@ -247,6 +247,9 @@ uv run owner.py day
 
 The journal is in [`journal/`](journal/): what it read, what it decided and why, what it did, and what it asks you.
 
+To let it work every day by itself, start `daily.sh` from a daily job on your computer (on a Mac: a launchd job).
+It runs once a day at most. If you have not merged yesterday's change yet, it keeps working on top of it.
+
 ## Take it further
 
 The factory is one file, so every part is easy to find and change.
