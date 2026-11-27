@@ -83,6 +83,9 @@ uv run factory.py build products/parcel-tracking
 The agents build task by task. Each one starts from the work of the one before. After every task, the hidden
 tests of all tasks so far run again, so a new task cannot quietly break an old one.
 
+A product folder may contain `web.txt` with one line like `app.web:application`. Then the judge serves that WSGI
+app while the tests run, and the tests find its address in the environment variable `PRODUCT_URL`.
+
 For the tracking system: 5 of 5 tasks passed, in 119 seconds, for $0.84 at API prices. The result is in
 [`products/parcel-tracking`](products/parcel-tracking/): the plan, the checklists and the finished code.
 
