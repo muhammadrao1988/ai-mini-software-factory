@@ -134,26 +134,45 @@ def ask_agent(prompt: str, workspace: Path, log: Path) -> dict:
             "turns": answer.get("num_turns", 0)}
 
 
-def pytest(tests: Path, workspace: Path, log: Path) -> tuple[int, int, list[str]]:
+def pytest(tests: Path, workspace: Path, log: Path, serve: str | None = None) -> tuple[int, int, list[str]]:
     """Run tests against the agent's work with plain code (no AI). Returns passed, failed, and the failed test names.
 
     The work is copied to a clean folder first, and the tests run with an empty settings file. So nothing the
     agent left behind (settings files, caches, helper files) can change how the judge runs. The full output is
     saved in the log file, so every verdict can be checked by a person later.
+
+    With `serve` ("module:name"), the judge serves that WSGI app from the clean copy while the tests run, and
+    the tests find its address in PRODUCT_URL.
     """
+    if serve is not None:
+        check_entry(serve)
     judge = Path(tempfile.mkdtemp(prefix="factory-judge-"))
+    done = problem = None
     try:
         code = judge / "code"
         shutil.copytree(workspace, code, ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache", "*.pyc"))
         shutil.copytree(tests, judge / "checks", ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
         (judge / "empty.ini").write_text("[pytest]\n")
         env = dict(os.environ, PYTHONPATH=str(code), PYTHONDONTWRITEBYTECODE="1")
-        done = run([sys.executable, "-m", "pytest", str(judge / "checks"), "-q", "-c", str(judge / "empty.ini"),
-                    "--rootdir", str(judge / "checks"), "--noconftest", "-p", "no:cacheprovider", "-rf", "--tb=short"],
-                   judge, env, timeout=300)
+        env.pop("PRODUCT_URL", None)
+        args = [sys.executable, "-m", "pytest", str(judge / "checks"), "-q", "-c", str(judge / "empty.ini"),
+                "--rootdir", str(judge / "checks"), "--noconftest", "-p", "no:cacheprovider", "-rf", "--tb=short"]
+        if serve is None:
+            done = run(args, judge, env, timeout=300)
+        else:
+            try:
+                service = start_service(code, serve)
+            except RuntimeError as error:
+                problem = f"The service could not start.\n{error}\n"
+            else:
+                with service:  # stopped after the run, even if the run raises
+                    done = run(args, judge, dict(env, PRODUCT_URL=service.url), timeout=300)
     finally:
         shutil.rmtree(judge, ignore_errors=True)
     log.parent.mkdir(parents=True, exist_ok=True)
+    if problem:
+        log.write_text(problem)
+        return 0, 1, [COULD_NOT_RUN]
     log.write_text(done.stdout + ("\n--- error output ---\n" + done.stderr if done.stderr.strip() else ""))
     failed = re.findall(r"^FAILED \S+::(\w+)", done.stdout, re.M)
     passed = int(m.group(1)) if (m := re.search(r"(\d+) passed", done.stdout)) else 0
@@ -193,11 +212,29 @@ class Service:
         self.stop()
 
 
-def start_service(code: Path, entry: str = "app.web:application", wait: float = 10.0) -> Service:
-    """Serve the WSGI app `entry` ("module:name") from the folder `code` on a free port, and wait until it answers."""
-    module, colon, name = entry.partition(":")
+def check_entry(entry: str) -> None:
+    """Raise ValueError unless `entry` looks like "module:name"."""
+    module, _, name = entry.partition(":")
     if not module or not name or ":" in name:
         raise ValueError(f"entry must look like 'module:name', not {entry!r}")
+
+
+def web_entry(product: Path) -> str | None:
+    """The WSGI app of a product, from the first non-blank line of web.txt, or None if there is no web.txt."""
+    file = product / "web.txt"
+    if not file.exists():
+        return None
+    entry = next((line.strip() for line in file.read_text().splitlines() if line.strip()), None)
+    if entry is None:
+        raise ValueError(f"{file} is empty; write one line like app.web:application")
+    check_entry(entry)
+    return entry
+
+
+def start_service(code: Path, entry: str = "app.web:application", wait: float = 10.0) -> Service:
+    """Serve the WSGI app `entry` ("module:name") from the folder `code` on a free port, and wait until it answers."""
+    check_entry(entry)
+    module, _, name = entry.partition(":")
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -233,7 +270,7 @@ def notes_for(failed: list[str], hidden: Path) -> list[str]:
     return notes
 
 
-def run_task(task: Path, text: str = "task.md", hidden: Path | None = None) -> dict:
+def run_task(task: Path, text: str = "task.md", hidden: Path | None = None, serve: str | None = None) -> dict:
     spec = (task / text).read_text()
     hidden = hidden or task / "hidden"
     workspace = new_workspace(task)
@@ -247,8 +284,8 @@ def run_task(task: Path, text: str = "task.md", hidden: Path | None = None) -> d
         answer = ask_agent(prompt, workspace, logs / f"try-{attempt}-agent.txt")
         run(["git", "add", "-A", "-N"], workspace)
         (logs / f"try-{attempt}-change.diff").write_text(run(["git", "diff", "HEAD"], workspace).stdout)
-        seen_pass, seen_fail, _ = pytest(workspace / "tests", workspace, logs / f"try-{attempt}-visible.txt")
-        hid_pass, hid_fail, failed = pytest(hidden, workspace, logs / f"try-{attempt}-hidden.txt")
+        seen_pass, seen_fail, _ = pytest(workspace / "tests", workspace, logs / f"try-{attempt}-visible.txt", serve)
+        hid_pass, hid_fail, failed = pytest(hidden, workspace, logs / f"try-{attempt}-hidden.txt", serve)
         notes = notes_for(failed, hidden)
         result["tries"] = attempt
         result["seconds"] += round(time.time() - started)
@@ -350,6 +387,7 @@ def build(product: Path, text: str) -> list[dict]:
     the hidden tests of every task so far, so a new task cannot quietly break an old one."""
     global PROJECT
     PROJECT = product / "project"
+    serve = web_entry(product)
     tasks = sorted(p for p in (product / "tasks").iterdir() if (p / "task.md").exists())
     if not PROJECT.is_dir() or not tasks:
         sys.exit(f"{product} is not a product folder. Make one with: uv run factory.py start \"your idea\" --name my-product")
@@ -358,7 +396,7 @@ def build(product: Path, text: str) -> list[dict]:
         for test_file in (task / "hidden").glob("test_*.py"):
             shutil.copy(test_file, checks / f"test_{task.name.replace('-', '_')}_{test_file.stem[5:]}.py")
         print(f"Task {task.name}", flush=True)
-        result = run_task(task, text, hidden=checks)
+        result = run_task(task, text, hidden=checks, serve=serve)
         results.append(result)
         if not result["passed"]:
             print(f"  Stopped: {task.name} did not pass in {MAX_TRIES} tries. The product keeps the work up to the task before it."
