@@ -18,6 +18,7 @@ Usage:  uv run owner.py day            (one working day, ends with a pull reques
 from __future__ import annotations
 
 import argparse
+import atexit
 import datetime
 import json
 import os
@@ -109,22 +110,44 @@ def think(role: str, prompt: str, shape: dict, tools: str = "") -> dict:
         sys.exit("An agent did not answer in the expected shape:\n" + (done.stderr or done.stdout)[-600:])
 
 
-def look_around(today: datetime.date) -> str:
+def look_around(today: datetime.date, root: Path, waiting: str) -> str:
     """Everything a person would glance at before starting the day. Plain code, no AI."""
-    goal = (HERE / "GOAL.md").read_text()
+    goal = (root / "GOAL.md").read_text()
     found = re.search(r"By (\d{1,2} \w+ \d{4})", goal)
     left = (datetime.datetime.strptime(found.group(1), "%d %B %Y").date() - today).days if found else None
-    entries = sorted((HERE / "journal").glob("20*.md"))[-3:]
+    entries = sorted((root / "journal").glob("20*.md"))[-3:]
     parts = [f"TODAY: {today.isoformat()}" + (f"  ({left} days until the goal date)" if left is not None else ""),
              "THE GOAL FILE\n" + goal,
              "NOTES FROM THE HUMAN OWNER\n" + (HERE / "OWNER-NOTES.md").read_text(),
+             "WAITING FOR THE HUMAN OWNER\n" + (waiting or "Nothing. Every earlier day is merged."),
              "THE LAST JOURNAL ENTRIES\n" + ("\n\n".join(e.read_text() for e in entries) or "(none yet: this is the first day)"),
-             "THE LAST CHANGES\n" + sh(["git", "log", "--format=%ad  %s", "--date=short", "-12"]),
+             "THE LAST CHANGES\n" + sh(["git", "log", "--format=%ad  %s", "--date=short", "-12"], root),
              "THE FILES (the folders tasks/, reference/, results/ and products/*/logs/ also exist; their files are not listed)\n"
-             + sh(["git", "ls-files", "--", ".", ":!results", ":!products/*/logs", ":!tasks", ":!reference"]),
-             "factory.py\n" + (HERE / "factory.py").read_text(),
-             "tests/test_factory.py\n" + (HERE / "tests" / "test_factory.py").read_text()]
+             + sh(["git", "ls-files", "--", ".", ":!results", ":!products/*/logs", ":!tasks", ":!reference"], root),
+             "factory.py\n" + (root / "factory.py").read_text(),
+             "tests/test_factory.py\n" + (root / "tests" / "test_factory.py").read_text()]
     return "\n\n==========\n\n".join(parts)
+
+
+def where_to_start(today: datetime.date) -> tuple[str, str]:
+    """Get the newest state from GitHub. Returns the point today's work starts from, and what still waits for
+    the human owner. If earlier days are not merged yet, today's work continues on top of the newest of them,
+    the way a person keeps working while a review is open."""
+    if not sh(["git", "remote"], check=False):
+        return "HEAD", ""
+    sh(["git", "fetch", "-q", "--prune", "origin"], check=False)
+    if sh(["git", "rev-parse", "--abbrev-ref", "HEAD"]) == "main":
+        sh(["git", "merge", "-q", "--ff-only", "origin/main"], check=False)
+    open_days = [b for b in sh(["git", "branch", "-r", "--no-merged", "origin/main", "--list", "origin/day/*",
+                                "--format=%(refname:short)"], check=False).splitlines() if b]
+    if f"origin/day/{today.isoformat()}" in open_days:
+        sys.exit(f"Today's work is already done: branch day/{today.isoformat()} is on GitHub.")
+    if not open_days:
+        return "HEAD", ""
+    newest = sorted(open_days)[-1]
+    names = ", ".join(b.replace("origin/", "") for b in sorted(open_days))
+    return newest, (f"{len(open_days)} earlier day(s) are not merged yet: {names}. Today's work continues on top of "
+                    f"{newest.replace('origin/', '')}. Do not redo that work. Remind the owner once, briefly.")
 
 
 def judge(worktree: Path, checks: Path, log: Path) -> list[str]:
@@ -156,10 +179,25 @@ def one_day(today: datetime.date, open_pr: bool) -> None:
     logs.mkdir(parents=True, exist_ok=True)
 
     print("1. Looking around ...", flush=True)
-    state = look_around(today)
+    base, waiting = where_to_start(today)
+    if waiting:
+        print("   " + waiting.split(". Do not")[0] + ".")
+    branch = f"day/{today.isoformat()}"
+    if sh(["git", "branch", "--list", branch]):
+        branch += "-" + datetime.datetime.now().strftime("%H%M")
+    worktree = Path(tempfile.mkdtemp(prefix="owner-work-")) / "repo"
+    sh(["git", "worktree", "add", "-q", "-b", branch, str(worktree), base])
+    sh(["git", "branch", "-q", "--unset-upstream", branch], check=False)
+    atexit.register(lambda: sh(["git", "worktree", "remove", "--force", str(worktree)], check=False))
+    if base != "HEAD":  # also take what was added to main since that day
+        if subprocess.run(["git", "merge", "-q", "--no-edit", "main"], cwd=worktree, capture_output=True).returncode:
+            sh(["git", "merge", "--abort"], worktree, check=False)
+    if (HERE / ".claude" / "hooks").is_dir():  # keep local git hooks (for example an account guard) working on the branch
+        shutil.copytree(HERE / ".claude" / "hooks", worktree / ".claude" / "hooks")
+    state = look_around(today, worktree, waiting)
 
     print("2. Reading what is new on the internet ...", flush=True)
-    goal_line = re.search(r"\*\*(.+?)\*\*", (HERE / "GOAL.md").read_text()).group(1)
+    goal_line = re.search(r"\*\*(.+?)\*\*", (worktree / "GOAL.md").read_text()).group(1)
     findings = think(SCOUT, f"The project: a small open-source 'software factory' in one Python file. A planner "
                             f"agent writes tasks and hidden tests, builder agents write the code, a judge runs the "
                             f"hidden tests.\n\nThe goal: {goal_line}\n\nToday is {today.isoformat()}. Find what is "
@@ -178,15 +216,8 @@ def one_day(today: datetime.date, open_pr: bool) -> None:
     (checks / "test_today.py").write_text(plan["checks"].rstrip() + "\n")
 
     print("4. Building it on its own branch ...", flush=True)
-    branch = f"day/{today.isoformat()}"
-    if sh(["git", "branch", "--list", branch]):
-        branch += "-" + datetime.datetime.now().strftime("%H%M")
-    worktree = Path(tempfile.mkdtemp(prefix="owner-work-")) / "repo"
-    sh(["git", "worktree", "add", "-q", "-b", branch, str(worktree), "HEAD"])
-    if (HERE / ".claude" / "hooks").is_dir():  # keep local git hooks (for example an account guard) working on the branch
-        shutil.copytree(HERE / ".claude" / "hooks", worktree / ".claude" / "hooks")
     prompt = (f"You are working on the project in this folder. Today's task:\n\n{plan['task']}\n\n"
-              f"Rules of the project:\n{(HERE / 'GOAL.md').read_text().split('## Rules for every day')[1]}")
+              f"Rules of the project:\n{(worktree / 'GOAL.md').read_text().split('## Rules for every day')[1]}")
     history, wrong, verdict = [], ["not started"], {"accept": False, "faults": [], "summary": ""}
     try:
         for attempt in range(1, MAX_TRIES + 1):
