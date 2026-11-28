@@ -8,6 +8,7 @@ A task goes in. An AI agent builds it alone in its own copy of the project. Hidd
 never sees, judge the result. A report shows what passed, how many tries it took and what it cost.
 
 Usage:  uv run factory.py start "an online parcel tracking system" --name tracking
+        uv run factory.py start "a room booking API" --name rooms --web   (plan a web API product)
         uv run factory.py build products/tracking       (build your product, task by task)
 
         uv run factory.py tasks/01-discount-code         (the demo: one task on the demo shop)
@@ -343,31 +344,82 @@ def checklist(hidden: Path) -> str:
             + "\n".join(f"- {point}" for point in points) + "\n")
 
 
-def start(idea: str, name: str, how_many: int) -> None:
-    """Turn an idea into a new product folder: an empty starter project and a list of tasks with hidden tests."""
-    product = HERE / "products" / name
-    if product.exists():
-        sys.exit(f"{product} already exists. Choose another --name, or delete that folder.")
-    print(f"The planner is turning your idea into {how_many} small tasks ...", flush=True)
-    done = subprocess.run(["claude", "-p", "--model", MODEL, "--output-format", "json", "--tools", "",
-                           "--system-prompt", PLANNER, "--json-schema", json.dumps(PLAN_SHAPE)],
-                          input=f"The product idea: {idea}\n\nMake exactly {how_many} tasks.",
-                          env=agent_env(), capture_output=True, text=True, timeout=1200)
-    try:
-        plan = json.loads(done.stdout)["structured_output"]
-    except (json.JSONDecodeError, KeyError, TypeError):
-        sys.exit("The planner did not return a plan:\n" + (done.stderr or done.stdout)[-500:])
+WEB_RULES = """Rules for the product:
+- A JSON web API, written as a plain WSGI app. Python standard library only: no web framework, no outside packages.
+- The app is the callable `application` in app/web.py, served as `app.web:application`. Other modules of the
+  package `app` may hold the logic. Data is kept in memory or in sqlite3.
+- The first task creates the core. Later tasks build on the earlier ones and must not break them.
+- Each task names every endpoint: the method, the path, the JSON body it takes, the status codes and the JSON
+  it returns.
+- Each task tells the builder to test the app in its own tests by calling `application` directly, in-process,
+  with `wsgiref.util.setup_testing_defaults`, and never through a running server.
+- The hidden tests call the running service only over HTTP. They read the base address from
+  os.environ["PRODUCT_URL"] and use `urllib.request` and `json`. They catch `urllib.error.HTTPError` to read
+  4xx/5xx status codes (error.code, error.read()).
+- All hidden tests of all tasks share ONE running service. So each test creates its own data with unique
+  values (for example from uuid.uuid4().hex), and never assumes the store is empty or that ids start at 1.
+- Hidden tests must not import `app`.
+"""
 
+
+def planner_prompt(web: bool = False) -> str:
+    """The planner's system prompt: PLANNER, or for a web API product PLANNER with the web product rules."""
+    if not web:
+        return PLANNER
+    intro, rest = PLANNER.split("Rules for the product:\n")
+    return intro + WEB_RULES + "\nRules for each task:\n" + rest.split("Rules for each task:\n")[1]
+
+
+WEB_APP = """import json
+
+
+def application(environ, start_response):
+    body = json.dumps({"error": "not found"}).encode()
+    start_response("404 Not Found", [("Content-Type", "application/json"), ("Content-Length", str(len(body)))])
+    return [body]
+"""
+
+WEB_START_TEST = """from wsgiref.util import setup_testing_defaults
+
+
+def test_the_package_loads():
+    import app  # noqa: F401
+
+
+def test_the_app_answers_in_process():
+    from app.web import application
+    environ, seen = {}, []
+    setup_testing_defaults(environ)
+    application(environ, lambda status, headers, exc_info=None: seen.append(status))
+    assert seen[0].startswith("404")
+"""
+
+
+def write_plan(product: Path, plan: dict, name: str, web: bool = False) -> list[Path]:
+    """Write a new product folder from the planner's plan. Returns the task folders in order."""
+    if product.exists():
+        raise FileExistsError(f"{product} already exists")
+    fields = ("name", "task", "ticket", "hidden_tests")
+    tasks = plan.get("tasks") if isinstance(plan, dict) else None
+    if not (isinstance(plan, dict) and isinstance(plan.get("summary"), str) and isinstance(tasks, list) and tasks
+            and all(isinstance(t, dict) and all(isinstance(t.get(f), str) for f in fields) for t in tasks)):
+        raise ValueError("a plan needs a text summary and tasks, each with text name, task, ticket and hidden_tests")
     project = product / "project"
     (project / "app").mkdir(parents=True)
     (project / "tests").mkdir()
     (project / "app" / "__init__.py").write_text("")
-    (project / "tests" / "test_start.py").write_text("def test_the_package_loads():\n    import app  # noqa: F401\n")
+    if web:
+        (product / "web.txt").write_text("app.web:application\n")
+        (project / "app" / "web.py").write_text(WEB_APP)
+        (project / "tests" / "test_start.py").write_text(WEB_START_TEST)
+    else:
+        (project / "tests" / "test_start.py").write_text("def test_the_package_loads():\n    import app  # noqa: F401\n")
     version = f"{sys.version_info.major}.{sys.version_info.minor}"
-    (project / "README.md").write_text(f"# {name}\n\n{plan['summary']}\n\nBuilt and tested by the factory with Python {version}. "
-                                       f"Run the tests with `uv run --python {version} --with pytest pytest -q`.\n")
-    (product / "idea.md").write_text(f"{idea}\n\n{plan['summary']}\n")
-    for number, task in enumerate(plan["tasks"], 1):
+    served = "The app is a web API served from `app.web:application`.\n\n" if web else ""
+    (project / "README.md").write_text(f"# {name}\n\n{plan['summary']}\n\n{served}Built and tested by the factory with "
+                                       f"Python {version}. Run the tests with `uv run --python {version} --with pytest pytest -q`.\n")
+    folders = []
+    for number, task in enumerate(tasks, 1):
         slug = re.sub(r"[^a-z0-9-]+", "-", task["name"].lower()).strip("-") or "task"
         folder = product / "tasks" / f"{number:02d}-{slug}"
         (folder / "hidden").mkdir(parents=True)
@@ -375,6 +427,29 @@ def start(idea: str, name: str, how_many: int) -> None:
         (folder / "ticket.md").write_text(task["ticket"].rstrip() + "\n")
         (folder / "hidden" / "test_hidden.py").write_text(task["hidden_tests"].rstrip() + "\n")
         (folder / "checklist.md").write_text(checklist(folder / "hidden"))
+        folders.append(folder)
+    return folders
+
+
+def start(idea: str, name: str, how_many: int, web: bool = False) -> None:
+    """Turn an idea into a new product folder: an empty starter project and a list of tasks with hidden tests."""
+    product = HERE / "products" / name
+    if product.exists():
+        sys.exit(f"{product} already exists. Choose another --name, or delete that folder.")
+    print(f"The planner is turning your idea into {how_many} small tasks ...", flush=True)
+    kind = " It is a web API: a JSON service that answers over HTTP." if web else ""
+    done = subprocess.run(["claude", "-p", "--model", MODEL, "--output-format", "json", "--tools", "",
+                           "--system-prompt", planner_prompt(web), "--json-schema", json.dumps(PLAN_SHAPE)],
+                          input=f"The product idea: {idea}{kind}\n\nMake exactly {how_many} tasks.",
+                          env=agent_env(), capture_output=True, text=True, timeout=1200)
+    try:
+        plan = json.loads(done.stdout)["structured_output"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        sys.exit("The planner did not return a plan:\n" + (done.stderr or done.stdout)[-500:])
+
+    folders = write_plan(product, plan, name, web)
+    (product / "idea.md").write_text(f"{idea}\n\n{plan['summary']}\n")
+    for folder, task in zip(folders, plan["tasks"]):
         print(f"  {folder.name}: {task['ticket'].strip()}")
     print(f"\nYour product folder: {product}"
           f"\nRead task.md and checklist.md in each task folder first. The checklist says, in plain words, what the"
@@ -438,6 +513,7 @@ def main() -> None:
     parser.add_argument("target", nargs="?", help='for start: your idea in quotes. For build: the product folder')
     parser.add_argument("--name", default="my-product", help="start: the name of the new product folder")
     parser.add_argument("--tasks", type=int, default=5, help="start: how many tasks the planner makes (default 5)")
+    parser.add_argument("--web", action="store_true", help="start: plan a web API product (served over HTTP)")
     parser.add_argument("--tickets", action="store_true",
                         help="give the agent the one-line ticket (ticket.md) instead of the full spec (task.md)")
     parser.add_argument("--project", type=Path,
@@ -455,7 +531,7 @@ def main() -> None:
     if args.command_or_path == "start":
         if not args.target:
             sys.exit('Give your idea in quotes:  uv run factory.py start "an online parcel tracking system" --name tracking')
-        start(args.target, re.sub(r"[^a-z0-9-]+", "-", args.name.lower()).strip("-") or "my-product", args.tasks)
+        start(args.target, re.sub(r"[^a-z0-9-]+", "-", args.name.lower()).strip("-") or "my-product", args.tasks, args.web)
         return
     if args.command_or_path == "build":
         if not args.target:

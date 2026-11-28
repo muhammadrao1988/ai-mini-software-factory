@@ -188,6 +188,8 @@ uv run factory.py start "your idea in one sentence" --name my-product
 uv run factory.py build products/my-product
 ```
 
+Add `--web` to `start` to plan a small JSON web API instead; the factory serves it over HTTP while the hidden tests run.
+
 Between the two commands, read `task.md` and `checklist.md` in each folder of `products/my-product/tasks/`.
 
 ### Or: run the demo
